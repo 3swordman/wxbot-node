@@ -1,0 +1,9 @@
+{
+    "compilerOptions": {
+        "esModuleInterop": true,
+        "strict": true,
+        "alwaysStrict": false
+    },
+    "include": ["."],
+    "exclude": ["node_modules"]
+}
