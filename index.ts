@@ -8,23 +8,90 @@ import cors from "cors"
 import dayjs from "dayjs"
 import useragent from "express-useragent"
 
-import { createConnection } from "mysql"
+import { createConnection, Connection as MysqlConnection, escape as sqlEscape, MysqlError } from "mysql"
 import { v4 as uuid } from "uuid"
 import { MongoClient } from "mongodb"
 
 // configs
-const { port, mysqlUsername, mysqlPassword, mysqlHost, mysqlDatabase }: {
+const { port, mysqlUsername, mysqlPassword, mysqlHost, mysqlDatabase, salt }: {
   port: number,
   mysqlUsername: string,
   mysqlPassword: string,
   mysqlHost: string,
-  mysqlDatabase: string
+  mysqlDatabase: string,
+  salt: string
 } = JSON.parse(fs.readFileSync("./config.json").toString())
+
+class ScoreChanger {
+  private connection: MysqlConnection
+  constructor({ username, password, host, database }: {
+    username: string,
+    password: string,
+    host: string,
+    database: string
+  }) {
+    this.connection = createConnection({
+      host,
+      user: username,
+      password,
+      database
+    })
+    this.connection.connect()
+  }
+  private escape(template: { raw: readonly string[] }, ...substitutions: (string | number)[]): string {
+    return String.raw(
+      template, 
+      ...(substitutions.map(element => sqlEscape(element)))
+    )
+  }
+  private query<T = void>(template: { raw: readonly string[] }, ...substitutions: (string | number)[]) {
+    const queryString = this.escape(template, ...substitutions)
+    return new Promise<T>((res, rej) => {
+      this.connection.query(
+        queryString, 
+        function (err: MysqlError | null, results: T) {
+          if (err) {
+            rej(err)
+            return
+          }
+          res(results)
+        }
+      )
+    })
+  }
+  async get(wxid: string) {
+    return (await this.query<Array<{
+      point: number
+    }> | null>`SELECT point from members where wx_id = ${wxid}`)?.[0]?.point
+  }
+  async set(wxid: string, score: number, minusScore: number) {
+    await this.query`UPDATE members set point = ${score} where wx_id = ${wxid}`
+    const timeNow = dayjs().format("YYYY-MM-DD HH:mm:ss")
+    await this.query`INSERT into liushui (time, wx_id, reason, change) values (${timeNow}, ${wxid}, '购买商品扣分', ${"-" + minusScore})`
+  }
+}
+
+class WechatMessageList {
+  private list: Array<[string, string]>
+  constructor() {
+    this.list = []
+  }
+  find(text: string) {
+    return this.list.find(([wxid, message]) => text == message)?.[0]
+  }
+  push(wxid: string, message: string) {
+    this.list.push([wxid, message])
+    // the list too long? limit it to only 1000 elements
+    if (this.list.length >= 1500) {
+      this.list = this.list.slice(500) 
+    }
+  }
+}
 
 // logger used
 const logger = pino({ 
   level: process.env.LOG_LEVEL || "info"
-})
+}/* , pino.destination(`./pino.log`) */)
 
 logger.info("start pino successfully")
 
@@ -32,69 +99,21 @@ logger.info("start pino successfully")
 const maxDailyScore = Infinity
 
 // wechat message list
-let messageList = new Array<[string, string]>()
+// let messageList = new Array<[string, string]>()
+let messageList = new WechatMessageList
 
 // mysql: this is only used for changing score
 
-const mysqlConnection = createConnection({
+const scoreChanger = new ScoreChanger({
   host: mysqlHost,
-  user: mysqlUsername,
+  username: mysqlUsername,
   password: mysqlPassword,
   database: mysqlDatabase
 })
 
-mysqlConnection.connect()
-
-async function getScoreOfUser(wxid: string): Promise<number | undefined> {
-  const score = (await new Promise<Array<{
-    point: number
-  }>>((res, rej) => {
-    mysqlConnection.query(
-      `SELECT point from members where wx_id = ${mysqlConnection.escape(wxid)}`, 
-      function (err, results) {
-        if (err) {
-          rej(err)
-          return
-        }
-        res(results)
-      }
-    )
-  }))[0]?.point
-  return score
-}
-
-async function setScoreOfUser(wxid: string, score: number, minusScore: number) {
-  await new Promise<void>((res, rej) => {
-    mysqlConnection.query(
-      `UPDATE members set point = ${mysqlConnection.escape(score)} where wx_id = ${mysqlConnection.escape(wxid)}`, 
-      function (err, results) {
-        if (err) {
-          rej(err)
-          return
-        }
-        res()
-      }
-    )
-  })
-  const timeNow = dayjs().format("YYYY-MM-DD HH:mm:ss")
-  await new Promise<void>((res, rej) => {
-    mysqlConnection.query(
-      `INSERT into liushui (time, wx_id, reason, change) values (${mysqlConnection.escape(timeNow)}, ${mysqlConnection.escape(wxid)}, '购买商品扣分', ${mysqlConnection.escape("-" + minusScore)})`, 
-      function (err, results) {
-        if (err) {
-          rej(err)
-          return
-        }
-        res()
-      }
-    )
-  })
-
-}
-
 // convert password to hash to ensures security
 function passwordHash(rawPassword: string) {
-  return crypto.createHash("sha256").update(rawPassword).digest("base64")
+  return crypto.createHmac("sha512", salt).update(rawPassword).digest("base64")
 }
 
 
@@ -133,8 +152,10 @@ function readGoods() {
     wxid: string,
     username: string,
     password: string,
-    token: string | null,
-    tokenTime: Date
+    tokens: Array<{
+      token: string,
+      time: Date
+    }>
   }>("user")
 
   const ordersCollection = db.collection<{
@@ -149,17 +170,46 @@ function readGoods() {
   await tempUserCollection.createIndex({ time: 1 }, {
     expireAfterSeconds: 60 * 10
   })
+  
+  await tempUserCollection.createIndex({ username: 1 }, {
+    unique: true
+  })
+  await userCollection.createIndex({ username: 1 }, {
+    unique: true
+  })
 
   logger.info("connected to mongodb successfully")
 
+  const jsonParser = bodyParser.json()
+  const urlencodedParser = bodyParser.urlencoded({
+    extended: true
+  })
+
   app
     .enable("trust proxy")
+    // set wrong x-powered-by
+    .use((req, res, next) => {
+      res.setHeader("X-Powered-By", "PHP/5.3.29")
+      next()
+    })
+    // use cors to allow api requests from the frontend domain
     .use(cors({
       optionsSuccessStatus: 200,
       // origin: ["score-store.intirain.cc", "localhost"]
     }))
+    // parse user agents
+    .use(useragent.express())
+    // disallow requests with bot-like user agents 
     .use((req, res, next) => {
-      bodyParser.json()(req, res, (err) => {
+      if (req.useragent?.isBot) {
+        res.sendStatus(418)
+        return
+      }
+      next()
+    })
+    // parse json bodies
+    .use((req, res, next) => {
+      jsonParser(req, res, (err) => {
         if (err) {
           logger.info(`invalid json response from ${req.ip}`)
           res.sendStatus(400)
@@ -168,52 +218,49 @@ function readGoods() {
         next()
       })
     })
-    .use(useragent.express())
+    // parse x-www-form-urlencoded bodies
     .use((req, res, next) => {
-      if (req.useragent?.isBot) {
-        res.sendStatus(418)
-        return
-      }
-      next()
+      urlencodedParser(req, res, (err) => {
+        if (err) {
+          logger.info(`invalid x-urlencoded response from ${req.ip}`)
+          res.sendStatus(400)
+          return
+        }
+        next()
+      })
     })
+    // request logger
     .use(expressPino({
       logger
     }))
-    .use((req, res, next) => {
-      res.setHeader("X-Powered-By", "PHP/5.3.29")
-      next()
-    })
     // 1. account part
     .post("/login", async function (req, res) {
-      const errorResponse = {
-        success: false,
-        loginToken: null
-      }
       const { username, password } = req.body
       // verify if the format of the request is correct
       if (typeof username != "string" || typeof password != "string") {
         res.sendStatus(400)
         return
       }
-      // verify the username and the password
-      const content = await userCollection.findOne({
+      const newToken = uuid()
+      // verify if the username and password are correct
+      const result = await userCollection.findOneAndUpdate({
         username,
         password: passwordHash(password)
-      })
-      if (content == null) {
-        res.json(errorResponse)
-        return
-      }
-      // generate new token and save it to the database
-      const newToken = uuid()
-      await userCollection.updateOne({
-        _id: content._id
       }, {
-        $set: {
-          token: newToken,
-          tokenTime: new Date
+        $push: {
+          tokens: {
+            token: newToken,
+            time: new Date
+          }
         }
       })
+      if (result.value === null) {
+        res.json({
+          success: false,
+          loginToken: null
+        })
+        return
+      }
       // send the data back
       res.json({
         success: true,
@@ -284,7 +331,7 @@ function readGoods() {
         return
       }
       // verify if the confirmText appeared before
-      const wxid = messageList.find(([wxid, message]) => tempUserContent.confirmText == message)?.[0]
+      const wxid = messageList.find(tempUserContent.confirmText)
       if (wxid == undefined) {
         // generate new confirmText and save to the database
         const newConfirmText = uuid()
@@ -312,8 +359,12 @@ function readGoods() {
         wxid,
         username,
         password,
-        token,
-        tokenTime: new Date
+        tokens: [
+          {
+            token, 
+            time: new Date
+          }
+        ]
       })
       res.json({
         success: true,
@@ -337,7 +388,7 @@ function readGoods() {
         return
       }
       // get score
-      const score = await getScoreOfUser(wxid)
+      const score = await scoreChanger.get(wxid)
       res.json({
         score, maxDailyScore
       })
@@ -354,11 +405,11 @@ function readGoods() {
     .post("/checkout", async function (req, res) {
       // verify if the type is correct (but not including the data of the goods)
       const { username, loginToken, goods } = req.body
-      if (
-        typeof username != "string" 
-        || typeof loginToken != "string" 
-        || !(goods instanceof Array)
-      ) {
+      if (!(
+        typeof username == "string" 
+        && typeof loginToken == "string" 
+        && goods instanceof Array
+      )) {
         res.json({
           success: false,
           errCode: 9999
@@ -373,7 +424,7 @@ function readGoods() {
       // get wxid
       const userContent = await userCollection.findOne({
         username, 
-        token: loginToken
+        "tokens.token": loginToken
       })
       if (userContent == null) {
         res.json({
@@ -384,7 +435,7 @@ function readGoods() {
       }
       const wxid = userContent.wxid
       // get score
-      const rawScore = await getScoreOfUser(wxid)
+      const rawScore = await scoreChanger.get(wxid)
       if (rawScore == undefined) {
         res.json({
           success: false,
@@ -436,7 +487,7 @@ function readGoods() {
         goods
       })
       // minus the score
-      await setScoreOfUser(wxid, rawScore - totalPrice, totalPrice)
+      await scoreChanger.set(wxid, rawScore - totalPrice, totalPrice)
       // success response
       res.json({
         success: true,
@@ -451,11 +502,7 @@ function readGoods() {
         res.sendStatus(400)
         return
       }
-      messageList.push([wxid, message])
-      // messageList too long? limit it to only 1000 element
-      if (messageList.length >= 1500) {
-        messageList = messageList.slice(500)
-      }
+      messageList.push(wxid, message)
       res.send("")
     })
     .get("/", function (req, res) {

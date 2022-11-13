@@ -3,3 +3,4 @@ config.json
 package-lock.json
 node_modules
 upload
+index.js
