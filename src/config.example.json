@@ -1,0 +1,7 @@
+{
+  "mysqlUsername": "robot",
+  "mysqlPassword": "robot",
+  "mysqlHost": "1.2.3.4",
+  "mysqlDatabase": "robot",
+  "mysqlDatabase2": "robot2"
+}

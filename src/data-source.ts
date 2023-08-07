@@ -8,12 +8,12 @@ const {
   mysqlUsername,
   mysqlPassword,
   mysqlHost,
-  mysqlDatabase
+  mysqlDatabase2
 }: {
   mysqlUsername: string
   mysqlPassword: string
   mysqlHost: string
-  mysqlDatabase: string
+  mysqlDatabase2: string
 } = JSON.parse(fs.readFileSync("./config.json").toString())
 
 export const AppDataSource = new DataSource({
@@ -22,7 +22,7 @@ export const AppDataSource = new DataSource({
   port: 3306,
   username: mysqlUsername,
   password: mysqlPassword,
-  database: mysqlDatabase,
+  database: mysqlDatabase2,
   synchronize: true,
   logging: false,
   entities: [User, Good, TempUser, Token, Order],
