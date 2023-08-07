@@ -5,7 +5,9 @@
         "alwaysStrict": false,
         "emitDecoratorMetadata": true,
         "experimentalDecorators": true,
-        "strictPropertyInitialization": false
+        "strictPropertyInitialization": false,
+        "target": "ESNext",
+        "moduleResolution": "NodeNext"
     },
     "include": ["."],
     "exclude": ["node_modules"]
