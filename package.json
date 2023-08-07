@@ -4,9 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "build": "esbuild index.ts --outfile=index.js",
-    "pm2": "esbuild index.ts --outfile=index.js && pm2 start index.js",
-    "dev": "npx tsx index.ts"
+    "dev": "npx tsx src/index.ts"
   },
   "type": "module",
   "author": "3swordman",
