@@ -19,11 +19,11 @@ import { AppDataSource } from "./data-source"
 // configs
 const {
   port,
-  db: { mysqlUsername, mysqlPassword, mysqlHost, mysqlDatabase },
+  db1: { mysqlUsername, mysqlPassword, mysqlHost, mysqlDatabase },
   salt
 }: {
   port: number
-  db: { mysqlUsername: string; mysqlPassword: string; mysqlHost: string; mysqlDatabase: string }
+  db1: { mysqlUsername: string; mysqlPassword: string; mysqlHost: string; mysqlDatabase: string }
   salt: string
 } = JSON.parse(fs.readFileSync("./config.json").toString())
 

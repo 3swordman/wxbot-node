@@ -4,9 +4,8 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "dev": "npx tsx src/index.ts"
+    "dev": "ts-node src/index.ts"
   },
-  "type": "module",
   "author": "3swordman",
   "license": "AGPL-3.0-or-later",
   "dependencies": {
