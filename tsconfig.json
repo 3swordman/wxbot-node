@@ -2,7 +2,10 @@
     "compilerOptions": {
         "esModuleInterop": true,
         "strict": true,
-        "alwaysStrict": false
+        "alwaysStrict": false,
+        "emitDecoratorMetadata": true,
+        "experimentalDecorators": true,
+        "strictPropertyInitialization": false
     },
     "include": ["."],
     "exclude": ["node_modules"]

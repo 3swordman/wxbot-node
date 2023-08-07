@@ -4,3 +4,5 @@ package-lock.json
 node_modules
 upload
 index.js
+pnpm-lock.yaml
+.vscode

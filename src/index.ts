@@ -1,3 +1,5 @@
+import "reflect-metadata"
+
 import express from "express"
 import fs from "fs"
 import pino from "pino"
@@ -10,24 +12,38 @@ import useragent from "express-useragent"
 
 import { createConnection, Connection as MysqlConnection, escape as sqlEscape, MysqlError } from "mysql"
 import { v4 as uuid } from "uuid"
-import { MongoClient } from "mongodb"
+
+import { User, Good, Order, TempUser, Token } from "./entity"
+import { AppDataSource } from "./data-source"
 
 // configs
-const { port, mysqlUsername, mysqlPassword, mysqlHost, mysqlDatabase, salt }: {
-  port: number,
-  mysqlUsername: string,
-  mysqlPassword: string,
-  mysqlHost: string,
-  mysqlDatabase: string,
+const {
+  port,
+  mysqlUsername,
+  mysqlPassword,
+  mysqlHost,
+  mysqlDatabase,
+  salt
+}: {
+  port: number
+  mysqlUsername: string
+  mysqlPassword: string
+  mysqlHost: string
+  mysqlDatabase: string
   salt: string
 } = JSON.parse(fs.readFileSync("./config.json").toString())
 
 class ScoreChanger {
   private connection: MysqlConnection
-  constructor({ username, password, host, database }: {
-    username: string,
-    password: string,
-    host: string,
+  constructor({
+    username,
+    password,
+    host,
+    database
+  }: {
+    username: string
+    password: string
+    host: string
     database: string
   }) {
     this.connection = createConnection({
@@ -39,35 +55,37 @@ class ScoreChanger {
     this.connection.connect()
   }
   private escape(template: { raw: readonly string[] }, ...substitutions: (string | number)[]): string {
-    return String.raw(
-      template, 
-      ...(substitutions.map(element => sqlEscape(element)))
-    )
+    return String.raw(template, ...substitutions.map(element => sqlEscape(element)))
   }
   private query<T = void>(template: { raw: readonly string[] }, ...substitutions: (string | number)[]) {
     const queryString = this.escape(template, ...substitutions)
     return new Promise<T>((res, rej) => {
-      this.connection.query(
-        queryString, 
-        function (err: MysqlError | null, results: T) {
-          if (err) {
-            rej(err)
-            return
-          }
-          res(results)
+      this.connection.query(queryString, function (err: MysqlError | null, results: T) {
+        if (err) {
+          rej(err)
+          return
         }
-      )
+        res(results)
+      })
     })
   }
   async get(wxid: string) {
-    return (await this.query<Array<{
-      point: number
-    }> | null>`SELECT point from members where wx_id = ${wxid}`)?.[0]?.point
+    return (
+      await this.query<Array<{
+        score: number
+      }> | null>`SELECT score from user where wx_id = ${wxid}`
+    )?.[0]?.score
   }
   async set(wxid: string, score: number, minusScore: number) {
-    await this.query`UPDATE members set point = ${score} where wx_id = ${wxid}`
+    await this.query`UPDATE user set score = ${score} where wx_id = ${wxid}`
+
+    const userID = (await this.query<Array<{
+      id: number
+    }> | null>`SELECT id from user where wx_id = ${wxid}`)![0].id
+
     const timeNow = dayjs().format("YYYY-MM-DD HH:mm:ss")
-    await this.query`INSERT into liushui (time, wx_id, reason, change) values (${timeNow}, ${wxid}, '购买商品扣分', ${"-" + minusScore})`
+    await this
+      .query`INSERT into transaction (time, user_id, reason, score) values (${timeNow}, ${userID}, '购买商品扣分', ${-minusScore})`
   }
 }
 
@@ -83,15 +101,17 @@ class WechatMessageList {
     this.list.push([wxid, message])
     // the list too long? limit it to only 1000 elements
     if (this.list.length >= 1500) {
-      this.list = this.list.slice(500) 
+      this.list = this.list.slice(500)
     }
   }
 }
 
 // logger used
-const logger = pino({ 
-  level: process.env.LOG_LEVEL || "info"
-}/* , pino.destination(`./pino.log`) */)
+const logger = pino(
+  {
+    level: process.env.LOG_LEVEL || "info"
+  } /* , pino.destination(`./pino.log`) */
+)
 
 logger.info("start pino successfully")
 
@@ -100,9 +120,7 @@ const maxDailyScore = Infinity
 
 // wechat message list
 // let messageList = new Array<[string, string]>()
-let messageList = new WechatMessageList
-
-// mysql: this is only used for changing score
+let messageList = new WechatMessageList()
 
 const scoreChanger = new ScoreChanger({
   host: mysqlHost,
@@ -111,74 +129,29 @@ const scoreChanger = new ScoreChanger({
   database: mysqlDatabase
 })
 
-// convert password to hash to ensures security
+// convert password to hash to ensure security
 function passwordHash(rawPassword: string) {
   return crypto.createHmac("sha512", salt).update(rawPassword).digest("base64")
 }
 
-
 function readGoods() {
-  return new Promise<Buffer>((resolve, reject) => fs.readFile("./goods.json", function (err, data) {
-    if (err) {
-      reject(err)
-      return
-    }
-    resolve(data)
-  }))
+  return new Promise<Buffer>((resolve, reject) =>
+    fs.readFile("./goods.json", function (err, data) {
+      if (err) {
+        reject(err)
+        return
+      }
+      resolve(data)
+    })
+  )
 }
 
-(async function () {
+;(async function () {
   const app = express()
 
-  // connect to mongodb
-  const client = new MongoClient("mongodb://127.0.0.1:27017")
-  
-  await client.connect()
-  await client.db("admin").command({ ping: 1 })
-  
-  // database
-  const db = client.db("wxbot")
+  const dataSource = await AppDataSource.initialize()
 
-  // collections
-  const tempUserCollection = db.collection<{
-    username: string,
-    password: string,
-    token: string,
-    time: Date,
-    confirmText: string
-  }>("tempuser")
-
-  const userCollection = db.collection<{
-    wxid: string,
-    username: string,
-    password: string,
-    tokens: Array<{
-      token: string,
-      time: Date
-    }>
-  }>("user")
-
-  const ordersCollection = db.collection<{
-    wxid: string,
-    goods: Array<{
-      id: number,
-      count: number
-    }>
-  }>("orders")
-
-  // documents in tempUserCollection will delete automatically after 10 minutes
-  await tempUserCollection.createIndex({ time: 1 }, {
-    expireAfterSeconds: 60 * 10
-  })
-  
-  await tempUserCollection.createIndex({ username: 1 }, {
-    unique: true
-  })
-  await userCollection.createIndex({ username: 1 }, {
-    unique: true
-  })
-
-  logger.info("connected to mongodb successfully")
+  logger.info("connected to mysql successfully")
 
   const jsonParser = bodyParser.json()
   const urlencodedParser = bodyParser.urlencoded({
@@ -193,13 +166,15 @@ function readGoods() {
       next()
     })
     // use cors to allow api requests from the frontend domain
-    .use(cors({
-      optionsSuccessStatus: 200,
-      // origin: ["score-store.intirain.cc", "localhost"]
-    }))
+    .use(
+      cors({
+        optionsSuccessStatus: 200
+        // origin: ["score-store.intirain.cc", "localhost"]
+      })
+    )
     // parse user agents
     .use(useragent.express())
-    // disallow requests with bot-like user agents 
+    // disallow requests with bot-like user agents
     .use((req, res, next) => {
       if (req.useragent?.isBot) {
         res.sendStatus(418)
@@ -209,7 +184,7 @@ function readGoods() {
     })
     // parse json bodies
     .use((req, res, next) => {
-      jsonParser(req, res, (err) => {
+      jsonParser(req, res, err => {
         if (err) {
           logger.info(`invalid json response from ${req.ip}`)
           res.sendStatus(400)
@@ -220,7 +195,7 @@ function readGoods() {
     })
     // parse x-www-form-urlencoded bodies
     .use((req, res, next) => {
-      urlencodedParser(req, res, (err) => {
+      urlencodedParser(req, res, err => {
         if (err) {
           logger.info(`invalid x-urlencoded response from ${req.ip}`)
           res.sendStatus(400)
@@ -230,9 +205,12 @@ function readGoods() {
       })
     })
     // request logger
-    .use(expressPino({
-      logger
-    }))
+    .use(
+      expressPino({
+        // @ts-ignore
+        logger
+      })
+    )
     // 1. account part
     .post("/login", async function (req, res) {
       const { username, password } = req.body
@@ -243,24 +221,24 @@ function readGoods() {
       }
       const newToken = uuid()
       // verify if the username and password are correct
-      const result = await userCollection.findOneAndUpdate({
-        username,
-        password: passwordHash(password)
-      }, {
-        $push: {
-          tokens: {
-            token: newToken,
-            time: new Date
-          }
+      const user = await User.findOne({
+        where: {
+          username,
+          password: passwordHash(password)
         }
       })
-      if (result.value === null) {
+      if (user === null) {
         res.json({
           success: false,
           loginToken: null
         })
         return
       }
+      Token.create({
+        token: newToken,
+        timestamp: Date.now(),
+        user
+      }).save()
       // send the data back
       res.json({
         success: true,
@@ -275,8 +253,8 @@ function readGoods() {
         return
       }
       // verify if the username is repeat
-      const tempUserContent = await tempUserCollection.findOne({
-        username
+      const tempUserContent = await TempUser.findOne({
+        where: { username }
       })
       if (tempUserContent != null) {
         res.json({
@@ -285,8 +263,8 @@ function readGoods() {
         })
         return
       }
-      const userContent = await userCollection.findOne({
-        username
+      const userContent = await User.findOne({
+        where: { username }
       })
       if (userContent != null) {
         res.json({
@@ -299,11 +277,11 @@ function readGoods() {
       const token = uuid()
       const confirmText = uuid()
       // save to the database and send the data back
-      await tempUserCollection.insertOne({
+      await TempUser.insert({
         username,
         password: passwordHash(password),
         token,
-        time: new Date,
+        timestamp: Date.now(),
         confirmText
       })
       logger.info("Added tempUser")
@@ -320,8 +298,8 @@ function readGoods() {
         return
       }
       // verify if the username exists
-      const tempUserContent = await tempUserCollection.findOne({
-        username
+      const tempUserContent = await TempUser.findOne({
+        where: { username }
       })
       if (tempUserContent == null) {
         res.json({
@@ -335,14 +313,9 @@ function readGoods() {
       if (wxid == undefined) {
         // generate new confirmText and save to the database
         const newConfirmText = uuid()
-        await tempUserCollection.updateOne({
-          _id: tempUserContent._id
-        }, {
-          $set: {
-            confirmText: newConfirmText,
-            time: new Date
-          }
-        })
+        tempUserContent.confirmText = newConfirmText
+        tempUserContent.timestamp = Date.now()
+        await tempUserContent.save()
         // send back to the user
         res.json({
           success: false,
@@ -351,21 +324,20 @@ function readGoods() {
         return
       }
       // move it from the tempUserCollection to the userCollection
-      await tempUserCollection.deleteOne({
-        _id: tempUserContent._id
-      })
       const { password, token } = tempUserContent
-      await userCollection.insertOne({
+      await tempUserContent.remove()
+      const createdUser = User.create({
         wxid,
         username,
         password,
-        tokens: [
-          {
-            token, 
-            time: new Date
-          }
-        ]
+        tokens: []
       })
+      createdUser.save()
+      Token.create({
+        token,
+        timestamp: Date.now(),
+        user: createdUser
+      }).save()
       res.json({
         success: true,
         confirmText: null
@@ -379,7 +351,7 @@ function readGoods() {
         return
       }
       // get wxid
-      const wxid = (await userCollection.findOne({ username }))?.wxid
+      const wxid = (await User.findOne({ where: { username } }))?.wxid
       if (wxid == undefined) {
         res.json({
           score: Infinity,
@@ -390,26 +362,20 @@ function readGoods() {
       // get score
       const score = await scoreChanger.get(wxid)
       res.json({
-        score, maxDailyScore
+        score,
+        maxDailyScore
       })
-
     })
     // 2. goods part
     .get("/get-goods", async function (req, res) {
       // read data from goods.json and send it
       const data = await readGoods()
-      res
-        .setHeader("Content-Type", "application/json")
-        .send(data)
+      res.setHeader("Content-Type", "application/json").send(data)
     })
     .post("/checkout", async function (req, res) {
       // verify if the type is correct (but not including the data of the goods)
       const { username, loginToken, goods } = req.body
-      if (!(
-        typeof username == "string" 
-        && typeof loginToken == "string" 
-        && goods instanceof Array
-      )) {
+      if (!(typeof username == "string" && typeof loginToken == "string" && goods instanceof Array)) {
         res.json({
           success: false,
           errCode: 9999
@@ -418,13 +384,17 @@ function readGoods() {
       }
       // get data (like price) from goods.json
       const goodsData: {
-        price: number,
+        price: number
         id: number
       }[] = JSON.parse((await readGoods()).toString())
       // get wxid
-      const userContent = await userCollection.findOne({
-        username, 
-        "tokens.token": loginToken
+      const userContent = await User.findOne({
+        where: {
+          username,
+          tokens: {
+            token: loginToken
+          }
+        }
       })
       if (userContent == null) {
         res.json({
@@ -482,10 +452,10 @@ function readGoods() {
         return
       }
       // save to the database
-      await ordersCollection.insertOne({
-        wxid,
+      Order.create({
+        user: userContent,
         goods
-      })
+      }).save()
       // minus the score
       await scoreChanger.set(wxid, rawScore - totalPrice, totalPrice)
       // success response
