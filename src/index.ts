@@ -309,7 +309,7 @@ function readGoods() {
         return
       }
       // verify if the confirmText appeared before
-      const wxid = messageList.find(tempUserContent.confirmText)
+      const wxid = messageList.find("&login " + tempUserContent.confirmText)
       if (wxid == undefined) {
         // generate new confirmText and save to the database
         const newConfirmText = uuid()
