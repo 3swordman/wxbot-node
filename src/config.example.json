@@ -1,7 +1,16 @@
 {
-  "mysqlUsername": "robot",
-  "mysqlPassword": "robot",
-  "mysqlHost": "1.2.3.4",
-  "mysqlDatabase": "robot",
-  "mysqlDatabase2": "robot2"
+  "db1": {
+    "mysqlUsername": "robot",
+    "mysqlPassword": "robot",
+    "mysqlHost": "1.2.3.4",
+    "mysqlDatabase": "robot"
+  },
+  "db2": {
+    "mysqlUsername": "robot",
+    "mysqlPassword": "robot",
+    "mysqlHost": "1.2.3.4",
+    "mysqlDatabase": "robot2"
+  },
+  "port": 12327,
+  "salt": "change-this-in-production"
 }
