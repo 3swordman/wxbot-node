@@ -3,7 +3,7 @@ import "reflect-metadata"
 import express from "express"
 import fs from "fs"
 import pino from "pino"
-import expressPino from "express-pino-logger"
+import pinoHttp from "pino-http"
 import bodyParser from "body-parser"
 import crypto from "crypto"
 import cors from "cors"
@@ -200,8 +200,7 @@ function readGoods() {
     })
     // request logger
     .use(
-      expressPino({
-        // @ts-ignore
+      pinoHttp({
         logger
       })
     )
