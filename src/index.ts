@@ -228,9 +228,9 @@ function readGoods() {
         })
         return
       }
-      Token.create({
+      await Token.create({
         token: newToken,
-        timestamp: Date.now(),
+        // timestamp: Date.now(),
         user
       }).save()
       // send the data back
@@ -275,7 +275,7 @@ function readGoods() {
         username,
         password: passwordHash(password),
         token,
-        timestamp: Date.now(),
+        // timestamp: Date.now(),
         confirmText
       })
       logger.info("Added tempUser")
@@ -308,7 +308,7 @@ function readGoods() {
         // generate new confirmText and save to the database
         const newConfirmText = uuid()
         tempUserContent.confirmText = newConfirmText
-        tempUserContent.timestamp = Date.now()
+        // tempUserContent.timestamp = Date.now()
         await tempUserContent.save()
         // send back to the user
         res.json({
@@ -326,10 +326,10 @@ function readGoods() {
         password,
         tokens: []
       })
-      createdUser.save()
-      Token.create({
+      await createdUser.save()
+      await Token.create({
         token,
-        timestamp: Date.now(),
+        // timestamp: Date.now(),
         user: createdUser
       }).save()
       res.json({
@@ -446,7 +446,7 @@ function readGoods() {
         return
       }
       // save to the database
-      Order.create({
+      await Order.create({
         user: userContent,
         goods
       }).save()

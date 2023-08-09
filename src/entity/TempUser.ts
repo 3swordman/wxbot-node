@@ -15,8 +15,5 @@ export class TempUser extends BaseEntity {
   token: string
 
   @Column()
-  timestamp: number
-
-  @Column()
   confirmText: string
 }

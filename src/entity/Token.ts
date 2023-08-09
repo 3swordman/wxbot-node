@@ -9,9 +9,6 @@ export class Token extends BaseEntity {
   @Column()
   token: string
 
-  @Column()
-  timestamp: number
-
   @ManyToOne(() => User, user => user.tokens)
   user: User
 }
