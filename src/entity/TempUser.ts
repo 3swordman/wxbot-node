@@ -1,11 +1,13 @@
-import { Entity, BaseEntity, PrimaryGeneratedColumn, Column, OneToMany } from "typeorm"
+import { Entity, BaseEntity, PrimaryGeneratedColumn, Column, OneToMany, CreateDateColumn } from "typeorm"
 
 @Entity()
 export class TempUser extends BaseEntity {
   @PrimaryGeneratedColumn()
   id: number
 
-  @Column()
+  @Column({
+    unique: true
+  })
   username: string
 
   @Column()
@@ -16,4 +18,7 @@ export class TempUser extends BaseEntity {
 
   @Column()
   confirmText: string
+
+  @CreateDateColumn()
+  time: Date
 }

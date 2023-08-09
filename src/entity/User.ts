@@ -7,10 +7,14 @@ export class User extends BaseEntity {
   @PrimaryGeneratedColumn()
   id: number
 
-  @Column()
+  @Column({
+    unique: true
+  })
   wxid: string
 
-  @Column()
+  @Column({
+    unique: true
+  })
   username: string
 
   @Column()
