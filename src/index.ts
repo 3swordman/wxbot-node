@@ -72,7 +72,7 @@ class ScoreChanger {
       }> | null>`SELECT score from user where wx_id = ${wxid}`
     )?.[0]?.score
   }
-  async set(wxid: string, score: number, minusScore: number) {
+  async set(wxid: string, score: number, addScore: number, reason: string) {
     await this.query`UPDATE user set score = ${score} where wx_id = ${wxid}`
 
     const userID = (await this.query<Array<{
@@ -81,7 +81,7 @@ class ScoreChanger {
 
     const timeNow = dayjs().format("YYYY-MM-DD HH:mm:ss")
     await this
-      .query`INSERT into transaction (time, user_id, reason, score) values (${timeNow}, ${userID}, '购买商品扣分', ${-minusScore})`
+      .query`INSERT into transaction (time, user_id, reason, score) values (${timeNow}, ${userID}, ${reason}, ${addScore})`
   }
 }
 
@@ -235,9 +235,7 @@ function passwordHash(rawPassword: string) {
         return
       }
       // verify if the username is repeat
-      const tempUserContent = await TempUser.findOne({
-        where: { username }
-      })
+      const tempUserContent = await TempUser.findOneBy({ username })
       if (tempUserContent != null) {
         res.json({
           loginToken: null,
@@ -245,9 +243,7 @@ function passwordHash(rawPassword: string) {
         })
         return
       }
-      const userContent = await User.findOne({
-        where: { username }
-      })
+      const userContent = await User.findOneBy({ username })
       if (userContent != null) {
         res.json({
           loginToken: null,
@@ -279,9 +275,7 @@ function passwordHash(rawPassword: string) {
         return
       }
       // verify if the username exists
-      const tempUserContent = await TempUser.findOne({
-        where: { username }
-      })
+      const tempUserContent = await TempUser.findOneBy({ username })
       if (tempUserContent == null) {
         res.json({
           success: false,
@@ -330,7 +324,7 @@ function passwordHash(rawPassword: string) {
         return
       }
       // get wxid
-      const wxid = (await User.findOne({ where: { username } }))?.wxid
+      const wxid = (await User.findOneBy({ username }))?.wxid
       if (wxid == undefined) {
         res.json({
           score: Infinity,
@@ -382,6 +376,9 @@ function passwordHash(rawPassword: string) {
       }
       // get wxid
       const userContent = await User.findOne({
+        relations: {
+          tokens: true
+        },
         where: {
           username,
           tokens: {
@@ -413,26 +410,34 @@ function passwordHash(rawPassword: string) {
         goods: []
       }).save()
       try {
-        await Promise.all(
+        const goods = await Promise.all(
           goodIDs.map(async ({ id, count }) => {
-            if (typeof id != "number" || typeof count != "number") {
-              throw Error()
-            }
             const good = await Good.findOneBy({
               id
             })
             if (!good) throw new Error()
-            totalPrice += good.price * count
+            const wxid = good.owner.wxid
+            const scoreBefore = await scoreChanger.get(wxid)
+            if (!scoreBefore) throw Error()
+            return { good, count, scoreBefore }
+          })
+        )
+        await Promise.all(
+          goods.map(async ({ good, count, scoreBefore }) => {
+            const thisGoodPrice = good.price * count
+            totalPrice += thisGoodPrice
             const goodBought = GoodBought.create({
               good,
               count,
               order
             })
+            const wxid = good.owner.wxid
+            await scoreChanger.set(wxid, scoreBefore + thisGoodPrice, thisGoodPrice, "销售商品加分")
             await goodBought.save()
-            return goodBought
           })
         )
       } catch (e) {
+        await order.remove()
         res.json({
           success: false,
           errCode: 9999
@@ -448,11 +453,47 @@ function passwordHash(rawPassword: string) {
         return
       }
       // minus the score
-      await scoreChanger.set(wxid, rawScore - totalPrice, totalPrice)
+      await scoreChanger.set(wxid, rawScore - totalPrice, -totalPrice, "购买商品扣分")
       // success response
       res.json({
         success: true,
         errCode: null
+      })
+    })
+    .post("/sell-goods", async function (req, res) {
+      const { name, price, description, loginToken } = req.body
+      if (
+        typeof name != "string" ||
+        typeof price != "number" ||
+        typeof description != "string" ||
+        typeof loginToken != "string"
+      ) {
+        res.json({ success: false })
+        return
+      }
+      const userContent = await User.findOne({
+        relations: {
+          tokens: true
+        },
+        where: {
+          tokens: {
+            token: loginToken
+          }
+        }
+      })
+      if (!userContent) {
+        res.json({ success: false })
+        return
+      }
+      const good = Good.create({
+        name,
+        price,
+        description,
+        owner: userContent
+      })
+      await good.save()
+      res.json({
+        success: true
       })
     })
     // 3. other
