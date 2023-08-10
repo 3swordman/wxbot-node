@@ -204,6 +204,7 @@ function readGoods() {
         logger
       })
     )
+    .use("/static", express.static("static"))
     // 1. account part
     .post("/login", async function (req, res) {
       const { username, password } = req.body
