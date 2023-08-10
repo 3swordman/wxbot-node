@@ -13,18 +13,20 @@ import useragent from "express-useragent"
 import { createConnection, Connection as MysqlConnection, escape as sqlEscape, MysqlError } from "mysql"
 import { v4 as uuid } from "uuid"
 
-import { User, Good, Order, TempUser, Token } from "./entity"
+import { User, GoodBought, Order, TempUser, Token } from "./entity"
 import { AppDataSource } from "./data-source"
 
 // configs
 const {
   port,
   db1: { mysqlUsername, mysqlPassword, mysqlHost, mysqlDatabase },
-  salt
+  salt,
+  minimumScore
 }: {
   port: number
   db1: { mysqlUsername: string; mysqlPassword: string; mysqlHost: string; mysqlDatabase: string }
   salt: string
+  minimumScore: number
 } = JSON.parse(fs.readFileSync("./config.json").toString())
 
 class ScoreChanger {
@@ -204,7 +206,6 @@ function readGoods() {
         logger
       })
     )
-    .use("/static", express.static("static"))
     // 1. account part
     .post("/login", async function (req, res) {
       const { username, password } = req.body
@@ -434,7 +435,7 @@ function readGoods() {
         return
       }
       // make sure that users have enough score
-      if (rawScore <= totalPrice) {
+      if (rawScore - totalPrice < minimumScore) {
         res.json({
           success: false,
           errCode: 1001

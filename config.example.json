@@ -12,5 +12,6 @@
     "mysqlDatabase": "robot2"
   },
   "port": 12327,
-  "salt": "change-this-in-production"
+  "salt": "change-this-in-production",
+  "minimumScore": 100
 }

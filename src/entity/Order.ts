@@ -1,6 +1,6 @@
 import { Entity, BaseEntity, PrimaryGeneratedColumn, OneToMany, ManyToOne } from "typeorm"
 import { User } from "./User"
-import { Good } from "./Good"
+import { GoodBought } from "./GoodBought"
 
 @Entity()
 export class Order extends BaseEntity {
@@ -10,6 +10,6 @@ export class Order extends BaseEntity {
   @ManyToOne(() => User, user => user.orders)
   user: User
 
-  @OneToMany(() => Good, good => good.order)
-  goods: Good[]
+  @OneToMany(() => GoodBought, good => good.order)
+  goods: GoodBought[]
 }

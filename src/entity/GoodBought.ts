@@ -2,7 +2,7 @@ import { Entity, BaseEntity, PrimaryGeneratedColumn, Column, ManyToOne } from "t
 import { Order } from "./Order"
 
 @Entity()
-export class Good extends BaseEntity {
+export class GoodBought extends BaseEntity {
   @PrimaryGeneratedColumn()
   id: number
 

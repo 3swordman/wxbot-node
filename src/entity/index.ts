@@ -1,5 +1,5 @@
 export { User } from "./User"
-export { Good } from "./Good"
+export { GoodBought } from "./GoodBought"
 export { TempUser } from "./TempUser"
 export { Token } from "./Token"
 export { Order } from "./Order"
