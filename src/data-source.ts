@@ -2,7 +2,7 @@ import "reflect-metadata"
 import fs from "fs"
 import { DataSource } from "typeorm"
 
-import { User, GoodBought, Order, TempUser, Token } from "./entity"
+import { User, GoodBought, Order, TempUser, Token, Good } from "./entity"
 
 const {
   mysqlUsername,
@@ -25,7 +25,7 @@ export const AppDataSource = new DataSource({
   database: mysqlDatabase,
   synchronize: true,
   logging: false,
-  entities: [User, GoodBought, TempUser, Token, Order],
+  entities: [User, Good, GoodBought, TempUser, Token, Order],
   migrations: [],
   subscribers: []
 })
