@@ -3,13 +3,7 @@
         {
             "title": "Win10/11原版（家庭版/专业版可选）远程安装",
             "description": "windows10/11原版远程安装，老机型勿购，请购买“1002”商品，需自备≥8GB无用U盘！！！！",
-            "price": 150,
-            "imageSrc": [
-                "https://cdn.3swordman.tk/goods/1-1.webp",
-                "https://cdn.3swordman.tk/goods/1-2.webp"
-            ],
-            "id": 1001,
-            "category": ["Software", "Operation System"]
+            "price": 150
         },
         {
             "title": "win10LTSC精简版",
@@ -27,34 +21,17 @@
                 "支持固态硬盘4K对齐、支持NVMe M.2固态",
                 "适用于老配置机型"
             ],
-            "price": 170,
-            "imageSrc": [
-                "https://cdn.3swordman.tk/goods/2-1.webp"
-            ],
-            "id": 1002,
-            "category": ["Software", "Operation System"]
+            "price": 170
         },
         {
             "title": "win11绕tpm版本",
             "description": "无需自备U盘. 适用于老机型无TPM模块仍想体验win11，不保证系统稳定性",
-            "price": 250,
-            "imageSrc": [
-                "https://cdn.3swordman.tk/goods/1-1.webp",
-                "https://cdn.3swordman.tk/goods/1-2.webp"
-            ],
-            "id": 1003,
-            "category": ["Software", "Operation System"]
+            "price": 250
         },
         {
             "title": "win11最新dev预览版",
             "description": "DEV版本，最新功能，前沿黑科技，等您来体验",
-            "price": 300,
-            "imageSrc": [
-                "https://cdn.3swordman.tk/goods/1-1.webp",
-                "https://cdn.3swordman.tk/goods/1-2.webp"
-            ],
-            "id": 1004,
-            "category": ["Software", "Operation System"]
+            "price": 300
         }
     ]
 }

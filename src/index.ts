@@ -13,7 +13,7 @@ import useragent from "express-useragent"
 import { createConnection, Connection as MysqlConnection, escape as sqlEscape, MysqlError } from "mysql"
 import { v4 as uuid } from "uuid"
 
-import { User, GoodBought, Order, TempUser, Token } from "./entity"
+import { User, GoodBought, Order, TempUser, Token, Good } from "./entity"
 import { AppDataSource } from "./data-source"
 
 // configs
@@ -128,18 +128,6 @@ const scoreChanger = new ScoreChanger({
 // convert password to hash to ensure security
 function passwordHash(rawPassword: string) {
   return crypto.createHmac("sha512", salt).update(rawPassword).digest("base64")
-}
-
-function readGoods() {
-  return new Promise<Buffer>((resolve, reject) =>
-    fs.readFile("./goods.json", function (err, data) {
-      if (err) {
-        reject(err)
-        return
-      }
-      resolve(data)
-    })
-  )
 }
 
 ;(async function () {
@@ -359,25 +347,39 @@ function readGoods() {
     })
     // 2. goods part
     .get("/get-goods", async function (req, res) {
-      // read data from goods.json and send it
-      const data = await readGoods()
-      res.setHeader("Content-Type", "application/json").send(data)
+      // read data from mysql and send it
+      res.json({
+        good: await Good.find({
+          select: {
+            id: true,
+            name: true,
+            price: true,
+            description: true
+          }
+        })
+      })
     })
     .post("/checkout", async function (req, res) {
       // verify if the type is correct (but not including the data of the goods)
-      const { username, loginToken, goods } = req.body
-      if (!(typeof username == "string" && typeof loginToken == "string" && goods instanceof Array)) {
+      const {
+        username,
+        loginToken,
+        goods: goodIDs
+      }: {
+        username: string
+        loginToken: string
+        goods: Array<{
+          id: number
+          count: number
+        }>
+      } = req.body
+      if (!(typeof username == "string" && typeof loginToken == "string" && goodIDs instanceof Array)) {
         res.json({
           success: false,
           errCode: 9999
         })
         return
       }
-      // get data (like price) from goods.json
-      const goodsData: {
-        price: number
-        id: number
-      }[] = JSON.parse((await readGoods()).toString())
       // get wxid
       const userContent = await User.findOne({
         where: {
@@ -406,27 +408,30 @@ function readGoods() {
       }
       // calculate how many score it will take
       let totalPrice = 0
+      const order = await Order.create({
+        user: userContent,
+        goods: []
+      }).save()
       try {
-        for (const i of goods) {
-          // verify if the type is correct again
-          const { id, count } = i
-          if (typeof id != "number" || typeof count != "number" || Object.keys(i).length != 2) {
-            res.json({
-              success: false,
-              errCode: 9999
+        await Promise.all(
+          goodIDs.map(async ({ id, count }) => {
+            if (typeof id != "number" || typeof count != "number") {
+              throw Error()
+            }
+            const good = await Good.findOneBy({
+              id
             })
-            return
-          }
-          const price = goodsData.find(good => good.id == id)?.price
-          if (price == undefined) {
-            res.json({
-              success: false,
-              errCode: 1003
+            if (!good) throw new Error()
+            totalPrice += good.price * count
+            const goodBought = GoodBought.create({
+              good,
+              count,
+              order
             })
-            return
-          }
-          totalPrice += price * count
-        }
+            await goodBought.save()
+            return goodBought
+          })
+        )
       } catch (e) {
         res.json({
           success: false,
@@ -442,11 +447,6 @@ function readGoods() {
         })
         return
       }
-      // save to the database
-      await Order.create({
-        user: userContent,
-        goods
-      }).save()
       // minus the score
       await scoreChanger.set(wxid, rawScore - totalPrice, totalPrice)
       // success response

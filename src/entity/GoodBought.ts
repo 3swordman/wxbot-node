@@ -1,13 +1,14 @@
 import { Entity, BaseEntity, PrimaryGeneratedColumn, Column, ManyToOne } from "typeorm"
 import { Order } from "./Order"
+import { Good } from "./Good"
 
 @Entity()
 export class GoodBought extends BaseEntity {
   @PrimaryGeneratedColumn()
   id: number
 
-  @Column()
-  goodID: number
+  @ManyToOne(() => Good, good => good.goodsBought)
+  good: Good
 
   @Column()
   count: number
