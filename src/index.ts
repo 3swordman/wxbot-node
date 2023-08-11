@@ -10,11 +10,12 @@ import cors from "cors"
 import dayjs from "dayjs"
 import useragent from "express-useragent"
 
-import { createConnection, Connection as MysqlConnection, escape as sqlEscape, MysqlError } from "mysql"
+import { createPool, Pool as MysqlPool, escape as sqlEscape, MysqlError } from "mysql"
 import { v4 as uuid } from "uuid"
 
 import { User, GoodBought, Order, TempUser, Token, Good } from "./entity"
 import { AppDataSource } from "./data-source"
+import { In } from "typeorm"
 
 // configs
 const {
@@ -30,7 +31,7 @@ const {
 } = JSON.parse(fs.readFileSync("./config.json").toString())
 
 class ScoreChanger {
-  private connection: MysqlConnection
+  private connection: MysqlPool
   constructor({
     username,
     password,
@@ -42,13 +43,12 @@ class ScoreChanger {
     host: string
     database: string
   }) {
-    this.connection = createConnection({
+    this.connection = createPool({
       host,
       user: username,
       password,
       database
     })
-    this.connection.connect()
   }
   private escape(template: { raw: readonly string[] }, ...substitutions: (string | number)[]): string {
     return String.raw(template, ...substitutions.map(element => sqlEscape(element)))
@@ -461,6 +461,7 @@ function passwordHash(rawPassword: string) {
         errCode: null
       })
     })
+    // 3. selling
     .post("/sell-goods", async function (req, res) {
       const { name, price, description, loginToken } = req.body
       if (
@@ -498,7 +499,50 @@ function passwordHash(rawPassword: string) {
         success: true
       })
     })
-    // 3. other
+    .post("/get-things-sold", async function (req, res) {
+      const { loginToken } = req.body
+      const user = await User.findOne({
+        relations: {
+          tokens: true
+        },
+        where: {
+          tokens: {
+            token: loginToken
+          }
+        }
+      })
+      if (!user) {
+        res.json({ data: null })
+        return
+      }
+      const goods = await Good.find({
+        relations: {
+          owner: true
+        },
+        where: {
+          owner: {
+            id: user.id
+          }
+        }
+      })
+      const goodsBought = await GoodBought.find({
+        relations: {
+          good: true
+        },
+        where: {
+          good: {
+            id: In(goods.map(good => good.id))
+          }
+        }
+      })
+      res.json({
+        data: {
+          goods,
+          goodsBought
+        }
+      })
+    })
+    // 4. other
     .post("/add-wechat-message", function (req, res) {
       const { wxid, message } = req.body
       // verify if the type is correct
