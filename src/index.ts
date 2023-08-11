@@ -343,7 +343,7 @@ function passwordHash(rawPassword: string) {
     .get("/get-goods", async function (req, res) {
       // read data from mysql and send it
       res.json({
-        good: await Good.find({
+        goods: await Good.find({
           select: {
             id: true,
             name: true,
