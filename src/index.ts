@@ -543,7 +543,7 @@ function passwordHash(rawPassword: string) {
       })
       res.json({
         data: {
-          goods,
+          goods: goods.map(({ owner, ...others }) => others),
           goodsBought
         }
       })
