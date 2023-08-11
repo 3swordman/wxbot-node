@@ -412,6 +412,7 @@ function passwordHash(rawPassword: string) {
       try {
         const goods = await Promise.all(
           goodIDs.map(async ({ id, count }) => {
+            if (count < 0) throw new Error()
             const good = await Good.findOneBy({
               id
             })
@@ -466,7 +467,8 @@ function passwordHash(rawPassword: string) {
         typeof name != "string" ||
         typeof price != "number" ||
         typeof description != "string" ||
-        typeof loginToken != "string"
+        typeof loginToken != "string" ||
+        price <= 0
       ) {
         res.json({ success: false })
         return
