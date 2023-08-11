@@ -516,6 +516,12 @@ function passwordHash(rawPassword: string) {
         return
       }
       const goods = await Good.find({
+        select: {
+          id: true,
+          name: true,
+          price: true,
+          description: true
+        },
         relations: {
           owner: true
         },
