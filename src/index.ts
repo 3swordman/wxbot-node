@@ -544,7 +544,7 @@ function passwordHash(rawPassword: string) {
       res.json({
         data: {
           goods: goods.map(({ owner, ...others }) => others),
-          goodsBought
+          goodsBought: goodsBought.map(({ good: { owner, ...good }, count }) => ({ good, count }))
         }
       })
     })
