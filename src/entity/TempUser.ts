@@ -6,7 +6,8 @@ export class TempUser extends BaseEntity {
   id: number
 
   @Column({
-    unique: true
+    unique: true,
+    length: 32
   })
   username: string
 
