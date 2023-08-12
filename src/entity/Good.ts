@@ -8,7 +8,8 @@ export class Good extends BaseEntity {
   id: number
 
   @Column({
-    unique: true
+    unique: true,
+    length: 32
   })
   name: string
 

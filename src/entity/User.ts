@@ -9,12 +9,14 @@ export class User extends BaseEntity {
   id: number
 
   @Column({
-    unique: true
+    unique: true,
+    length: 32
   })
   wxid: string
 
   @Column({
-    unique: true
+    unique: true,
+    length: 32
   })
   username: string
 

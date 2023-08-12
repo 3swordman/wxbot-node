@@ -7,7 +7,8 @@ export class Token extends BaseEntity {
   id: number
 
   @Column({
-    unique: true
+    unique: true,
+    length: 32
   })
   token: string
 
